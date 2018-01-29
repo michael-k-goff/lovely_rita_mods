@@ -1,0 +1,1 @@
+cf = [{"fines": 15228771.0, "council": -1}, {"fines": 7527910.0, "council": 0}, {"fines": 9699205.0, "council": 1}, {"fines": 21217077.0, "council": 2}, {"fines": 6104979.0, "council": 3}, {"fines": 31806107.0, "council": 4}, {"fines": 5908774.0, "council": 5}, {"fines": 17069323.0, "council": 6}]
