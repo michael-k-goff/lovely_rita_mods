@@ -38,9 +38,10 @@ function add_shapes(shape_class) {
 	map_objects = {}
 	// Decide which set of objects to use
 	shapes = {"neighborhood":neighborhood_shapes, "council":council_shapes}[shape_class]
-	counts = {"neighborhood":neighborhood_counts, "council":council_counts}[shape_class]
+	counts = {"neighborhood":nc, "council":cc}[shape_class]
 	fines = {"neighborhood":neighborhood_fines, "council":council_fines}[shape_class]
 	// Add each individual shape with data
+	years = ["12","13","14","15","16"];
 	for (i=0; i<shapes.length; i++) {
 		mod_shape = []
 		// Latitude and longitude need to be switched.
@@ -57,18 +58,39 @@ function add_shapes(shape_class) {
 		// Shades of blue, with darker colors for more tickets.
 		col = '#3388ff'
 		if (i in counts) {
-			if (counts[i] > 1000) {col = '#2266cc'}
-			if (counts[i] > 10000) {col = '#2255aa'}
-			if (counts[i] > 20000) {col = '#113377'}
-			if (counts[i] > 30000) {col = '#000000'}
-			message += "<br>" + counts[i].toString() + " tickets"
+			if (counts[i]["count"] > 1000) {col = '#2266cc'}
+			if (counts[i]["count"] > 10000) {col = '#2255aa'}
+			if (counts[i]["count"] > 20000) {col = '#113377'}
+			if (counts[i]["count"] > 30000) {col = '#000000'}
+			message += "<br>" + counts[i]["count"].toString() + " tickets"
+			for (y in years) {
+				year = years[y];
+				tickets_by_year = 0;
+				if (year in counts[i]) {tickets_by_year = counts[i][year]}
+				message += "<br>Tickets in 20" + year + ": " + tickets_by_year.toString();
+			}
 			if (i in fines) {
-				average_fine = fines[i] / counts[i];
+				average_fine = fines[i] / counts[i]["count"];
 				message += "<br>Average fine of $" + Math.round(average_fine*100)/100;
 			}
 		}
 		map_objects[i] = L.polygon(mod_shape,{color: col}).addTo(mymap).bindPopup(message);
+		// Notice how we use the callbackClosure; this is so the map object "remembers" the parameter i.
+		map_objects[i].on("click",callbackClosure( i, function(i) {
+			if (i in counts) {
+				document.getElementById("region").innerHTML = i;
+				document.getElementById("count").innerHTML = counts[i]["count"];
+			}
+			else {
+				document.getElementById("region").innerHTML = "???";
+				document.getElementById("count").innerHTML = "???";
+			}
+		}));
 	}
+}
+
+function callbackClosure(i, callback) {
+	return function() { return callback(i);}
 }
 
 process_data();
