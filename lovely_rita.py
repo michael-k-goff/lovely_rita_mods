@@ -8,7 +8,8 @@
 # - When clicking on a region in the map, display a more detailed report about the region, perhaps using D3.
 # - Install cenpy and try to get Oakland census data with it. See https://earthdatascience.org/tutorials/get-cenus-data-with-cenpy/
 # - Perform some basic inquiries (e.g. do some neighborhoods have higher average tickets for the same violation, and what are their demographic characteristics?)
-# - Backend. As we discuss making a public-facing site, how will we host. Do we want a backend that can do some of this data processing or take new data?
+# - How to go from lat/long to block face?
+# - Consider https://geopy.readthedocs.io/en/1.10.0/
 
 # Instructions
 # - This code assumes that lovely-rita-clean.csv file has already been created from the Lovely Rita code. If not, go here: https://github.com/openoakland/lovely-rita/wiki/Data-Sources
@@ -20,6 +21,7 @@
 # - If you already have the latlon.csv file, use rerun() instead.
 
 import pandas as pd
+import numpy as np
 import os
 import json # For exporting data for Javascript Code
 import shapefile
@@ -27,7 +29,7 @@ from shapely.geometry import shape, Point, Polygon
 from pyproj import Proj, transform
 
 # Fill in your project directory here
-os.chdir("/Users/michaelgoff/Desktop/Machine Learning/lovely-rita")
+os.chdir("/Users/michaelgoff/Desktop/Machine Learning/lovely-rita-mods")
 # Read in the output of the python notebooks that clean the data. This might take a couple minutes.
 df = pd.read_csv("data/lovely-rita-clean.csv")
 
@@ -96,34 +98,75 @@ def dollar_to_num(amt):
         return float(amt.split('$')[1])
     return 0
     
+def date_to_year(date):
+    if isinstance(date,basestring):
+        return date[-2:]
+    return "?"
+    
 # This function create aggregates that are saved as JS files for use in the web app
 # Aggregate properties (e.g. number of tickets or average fine)
 def aggregates():
     # Convert fine amounts from string to numerical values (dollars)
     df["Fine Amount Num"] = df.apply(lambda row: dollar_to_num(row["Fine Amount"]),axis=1)
+    df["Year"] = df.apply(lambda row: date_to_year(row["Ticket Issue Date"]),axis=1)
+    df_by_year = {}
+    years = ["12","13","14","15","16"]
+    for y in years:
+        df_by_year[y] = df[df["Year"]==y]
+        
     # Number of tickets by neighborhood
     df_agg = df.groupby(["neighborhood"]).size().reset_index(name="counts")
-    agg_object = [{"neighborhood":df_agg.ix[i][0],"count":df_agg.ix[i][1]} for i in range(len(df_agg))]
+    df_agg_by_year = {}
+    for y in years:
+        df_agg_by_year[y] = df_by_year[y].groupby(["neighborhood"]).size().reset_index(name="counts")
+    agg_object = {df_agg.ix[i][0]:{"count":df_agg.ix[i][1]} for i in range(len(df_agg))}
+    for y in years:
+        for i in range(len(df_agg_by_year[y])):
+            agg_object[df_agg_by_year[y].ix[i][0]][y] = df_agg_by_year[y].ix[i][1]
     json_file = open("data/neighborhood_count.js", "w")
     json_file.write("nc = " + json.dumps(agg_object))
     json_file.close()
+    
     # Number of tickets by council district
     df_agg = df.groupby(["council"]).size().reset_index(name="counts")
-    agg_object = [{"council":df_agg.ix[i][0],"count":df_agg.ix[i][1]} for i in range(len(df_agg))]
+    df_agg_by_year = {}
+    for y in years:
+        df_agg_by_year[y] = df_by_year[y].groupby(["council"]).size().reset_index(name="counts")
+    agg_object = {df_agg.ix[i][0]:{"count":df_agg.ix[i][1]} for i in range(len(df_agg))}
+    for y in years:
+        for i in range(len(df_agg_by_year[y])):
+            agg_object[df_agg_by_year[y].ix[i][0]][y] = df_agg_by_year[y].ix[i][1]
     json_file = open("data/council_count.js", "w")
     json_file.write("cc = " + json.dumps(agg_object))
     json_file.close()
+    
     # Dollar value sum of tickets by neighborhood
     df_sum = df.groupby(["neighborhood"]).sum()
     agg_object = [{"neighborhood":i,"fines":df_sum["Fine Amount Num"][i]} for i in df_sum.index]
     json_file = open("data/neighborhood_fines.js", "w")
     json_file.write("nf = " + json.dumps(agg_object))
     json_file.close()
+    
     # Dollar value sum of tickets by council district
     df_sum = df.groupby(["council"]).sum()
     agg_object = [{"council":i,"fines":df_sum["Fine Amount Num"][i]} for i in df_sum.index]
     json_file = open("data/council_fines.js", "w")
     json_file.write("cf = " + json.dumps(agg_object))
+    json_file.close()
+    
+    # Share of tickets by type in 2016
+    ticket_types = np.unique(df_by_year["16"]["Violation Description Long"])
+    df16 = df_by_year["16"]
+    df_agg = df16.groupby(["neighborhood"]).size().reset_index(name="counts")
+    for t in ticket_types:
+        df_ticket = df16[df16["Violation Description Long"]==t]
+        df_ticket_agg = df_ticket.groupby(["neighborhood"]).size().reset_index(name=t)
+        df_agg = df_agg.merge(df_ticket_agg, left_on='neighborhood', right_on='neighborhood', how='left')
+        df_agg[t] = df_agg[t] / df_agg["counts"]
+    df_agg = df_agg.fillna(0)
+    agg_object = [{"neighborhood":df_agg["neighborhood"][i],"tickets": {t:df_agg[t][i] for t in ticket_types} }for i in df_agg.index]
+    json_file = open("data/ticket_types.js", "w")
+    json_file.write("ticket_types = " + json.dumps(agg_object))
     json_file.close()
 
 def run_full():
